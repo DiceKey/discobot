@@ -7,7 +7,7 @@ module.exports = {
 	DELIM: ',',
 	HELPST: "```"
 	  + `${PREFIX}add ALIAS  USERNAME              add a new user\n`
-	  + `${PREFIX}get ALIAS                        show one user's link\n`
+//	  + `${PREFIX}get ALIAS                        show one user's link\n`
 	  + `${PREFIX}users                            show all users' links\n`
 	  + `${PREFIX}rec [ALIAS]  [TAGS ...]          get recommendations\n`
 	  +       `    > ALIAS                         filter for a specific user\n`
