@@ -10,11 +10,12 @@ module.exports = {
 	  +       `    > ALIAS                         human-readable alias (eg. Charlie)\n`
 	  +       `    > USERNAME                      MAL username (eg. notatrueroute)\n`
 	  + `${PREFIX}users                            show all known users\n`
-	  + `${PREFIX}rec [ALIAS]  [TAG ...]  [--c]    get recommendations\n`
+	  + `${PREFIX}rec [ALIAS] [TAGS] [-u X] [--c]  get recommendations\n`
 	  +       `    > ALIAS                         filter for a specific alias (eg. Charlie)\n`
-	  +       `    > TAG ...                       filter for a certain tag/tags (eg. Action)\n`
-	  +       `    > --c                           show composite scores (scaled -> 1-10, avg translated -> 5.5, Bayesian priors)\n`
-	  + `${PREFIX}rand [TAG ...]                   get info about a random anime\n`
+	  +       `    > TAGS                          filter for a space-separated list of tags (eg. Action)\n`
+	  +       `    > -u X                          filter for entries that at least X people have reviewed (default=2)\n`
+	  +       `    > --c                           show composite scores (min -> 1, max -> 10, avg -> 5.5)\n`
+	  + `${PREFIX}rand [ALIAS] [TAGS] [-u X]       get info about a random anime\n`
 	  + `${PREFIX}info ANIMENAME                   get info about a specific anime\n`
 	  + `${PREFIX}tags                             get tags that can be used for !rec and !rand\n`
 	  + `${PREFIX}help                             print this dialogue`

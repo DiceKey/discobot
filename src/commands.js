@@ -1,24 +1,23 @@
 const globals = require('./globals');
 const helpers = require('./helpers');
 
+function sendReply( msg, body ) {
+  const newMsg = {
+    content: body,
+    messageReference: {messageID: msg.id}
+  };
+
+  return msg.channel.createMessage(newMsg);
+}
+
 module.exports = {
 
   /* HELP */
   help: (msg, args) => {
-    const newMsg = {
-      content: globals.HELPST,
-      messageReference: {messageID: msg.id}
-    };
-
-    return msg.channel.createMessage(newMsg);
+    return sendReply( msg, globals.HELPST );
   },
   UNDEFINED: (msg, args) => {
-    const newMsg = {
-      content: `**<E>** Invalid command name\n${globals.HELPST}`,
-      messageReference: {messageID: msg.id}
-    };
-
-    return msg.channel.createMessage(newMsg);
+    return sendReply( msg, `**<E>** Invalid command name\n${globals.HELPST}` );
   },
 
   /* ADD USER-LIST */
@@ -39,12 +38,7 @@ module.exports = {
       msgContents = `added user { ${alias}: <https://myanimelist.net/profile/${username}> }`;
     }
 
-    const newMsg = {
-      content: msgContents,
-      messageReference: {messageID: msg.id}
-    };
-
-    return msg.channel.createMessage(newMsg);
+    return sendReply(msg, msgContents);
   },
 
   /* SHOW ALL USER-LISTS */
@@ -63,36 +57,7 @@ module.exports = {
       msgContents = "**<I>** User list is empty";
     }
 
-    const newMsg = {
-      content: msgContents,
-      messageReference: {messageID: msg.id}
-    };
-
-    return msg.channel.createMessage(newMsg);
-  },
-
-  /* GET ONE USER-LIST */
-  get: (msg, args) => {
-    let alias = args[0];
-    let msgContents;
-
-    if ( alias === undefined ) {
-      msgContents = `**<E>** arg ALIAS undefined`;
-    } else {
-      alias = alias.toLowerCase();
-      const userObj = globals.userMap[alias];
-      if ( userObj )
-        msgContents = `<https://myanimelist.net/profile/${userObj.username}>`;
-      else
-        msgContents = `user ${alias} not found`;
-    }
-
-    const newMsg = {
-      content: msgContents,
-      messageReference: {messageID: msg.id}
-    };
-
-    return msg.channel.createMessage(newMsg);
+    return sendReply( msg, msgContents );
   },
 
   /* GET TAGS */
@@ -151,12 +116,7 @@ module.exports = {
       msgContents += "```";
     }
 
-    const newMsg = {
-      content: msgContents,
-      messageReference: {messageID: msg.id}
-    };
-
-    return msg.channel.createMessage(newMsg);
+    return sendReply( msg, msgContents );
   },
 
   /* GET RECS */
@@ -166,22 +126,45 @@ module.exports = {
 
     let userAlias = undefined;
     const tagList = [];
+    let flag = "";
+    let minUsers = 2;
+    let pageNum = 1;
     for ( const arg of args ) {
       if ( arg === "--c" ) {
         showComp = true;
+      } else if ( arg === "-u" ) {
+        flag = "u";
+      } else if ( arg === "-p" ) {
+        flag = "p";
       } else {
+        if ( flag == "u" ) {
+          flag = "";
+          minUsers = parseInt(arg);
+          if (minUsers === NaN) {
+            msgContents += `**<E>** Ignoring invalid flag: -u ${arg}`
+            minUsers = 2;
+          }
+          continue;
+        } else if ( flag == "p" ) {
+          flag = "";
+          pageNum = parseInt(arg);
+          if (pageNum === NaN) {
+            msgContents += `**<E>** Ignoring invalid flag: -p ${arg}`
+            pageNum = 0;
+          }
+          continue;
+        }
+
         const temp = arg.toLowerCase();
         if ( userAlias === undefined && tagList.length == 0 && globals.userMap[temp] ) {
           userAlias = temp;
         } else if ( globals.tagMap[temp] ) {
           tagList.push(temp);
         } else {
-          msgContents += `**<E>** User/Tag unrecognized: ${temp}\n`
+          msgContents += `**<E>** Ignoring unknown user/tag: ${temp}\n`
         }
       }
     }
-
-    const mediaList = helpers.getRecs(userAlias, tagList);
 
     const aliasList = [];
     if ( userAlias !== undefined )
@@ -195,9 +178,13 @@ module.exports = {
     for (let i = 0; i < aliasList.length; i++) {
       columnSizes.push(0);
     }
-    if ( showComp ) columnSizes.push(0);
+    if ( showComp ) columnSizes.push(0); // Comp
 
-    for ( const compObj of mediaList ) {
+    const compList = helpers.getRecs(userAlias, tagList, minUsers, pageNum - 1);
+    if (compList.length == 0) {
+      return sendReply( msg, "**<W>** Query returned 0 results." );
+    }
+    for ( const compObj of compList ) {
       columnSizes[0] = Math.max(columnSizes[0], compObj.name.length);
 
       let i = 1;
@@ -236,7 +223,7 @@ module.exports = {
     }
     msgContents += "------";
 
-    for ( const compObj of mediaList ) {
+    for ( const compObj of compList ) {
       // title
       msgContents += "\n|" + helpers.getTblFmtStr( compObj.name, columnSizes[0], 'l' );
 
@@ -256,25 +243,46 @@ module.exports = {
     }
     msgContents += "```";
 
-
-    const newMsg = {
-      content: msgContents,
-      messageReference: {messageID: msg.id}
-    };
-
-    return msg.channel.createMessage(newMsg);
+    return sendReply( msg, msgContents );
   },
 
   /* GET RAND */
   rand: async (msg, args) => {
-    const tagList = [];
     let errStr = "";
+    let userAlias = undefined;
+    const tagList = [];
+    let uFlag = false;
+    let minUsers = 1;
     for ( const arg of args ) {
-      const temp = arg.toLowerCase();
-      if ( globals.tagMap[temp] ) {
-        tagList.push(temp);
+      if ( arg === "-u" ) {
+        uFlag = true;
       } else {
-        errStr += `**<E>** Tag unrecognized: ${temp}\n`
+        if ( uFlag ) {
+          minUsers = parseInt(arg);
+          if (minUsers !== NaN) {
+            uFlag = false;
+            continue;
+          } else {
+            minUsers = 2;
+          }
+        }
+
+        const temp = arg.toLowerCase();
+        if ( userAlias === undefined && tagList.length == 0 && globals.userMap[temp] ) {
+          userAlias = temp;
+        } else if ( globals.tagMap[temp] ) {
+          tagList.push(temp);
+        } else {
+          errStr += `**<E>** User/Tag unrecognized: ${temp}\n`
+        }
+      }
+    }
+
+    let compObj;
+    if ( !errStr ) {
+      compObj = helpers.getRand(userAlias, tagList, minUsers);
+      if (!compObj) {
+        errStr = `**<W>** Query return 0 results`;
       }
     }
 
@@ -286,7 +294,6 @@ module.exports = {
       };
 
     } else {
-      const compObj = helpers.getRand(tagList);
       newMsg = await helpers.tblFmtEmbed( msg, structuredClone(compObj) );
     }
     

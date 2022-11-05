@@ -135,7 +135,7 @@ module.exports = {
     }
   },
 
-  getRecs: function( userAlias, tagList ) {
+  getRecs: function( userAlias, tagList, minUsers, offset=0 ) {
     const compList = [];
 
     if ( tagList.length > 0 ) {
@@ -150,7 +150,7 @@ module.exports = {
     } else {
       for ( const compObj of Object.values(globals.compMap) ) {
         // prefer entries that more than 1 user has reviewed
-        if ( userAlias || compObj.numUsers > 1 ) {
+        if ( userAlias || compObj.numUsers >= minUsers ) {
           compList.push(structuredClone(compObj));
         }
       };
@@ -162,21 +162,37 @@ module.exports = {
     else
       compList.sort(function(a,b){ return b.compScore - a.compScore });
 
-    const mediaList = compList.slice(0, globals.MAXLIST);
+    const start = offset * globals.MAXLIST;
+    const end   = start + globals.MAXLIST;
+    const mediaList = compList.slice(start, end);
     //console.log(mediaList);
     return mediaList;
   },
 
-  getRand: function ( tagList ) {
-    let keys;
+  getRand: function ( userAlias, tagList, minUsers ) {
+    let tempKeys;
+    let finalKeys = [];
 
     if ( tagList.length > 0 ) {
-      keys = getListIntersect( tagList );
+      tempKeys = getListIntersect( tagList );
     } else {
-      keys = Object.keys(globals.compMap);
+      tempKeys = Object.keys(globals.compMap);
     }
 
-    const randKey = keys [ Math.floor(Math.random() * keys.length) ];
+    if ( userAlias || (minUsers>1) ) {
+      for ( const key of tempKeys ) {
+        const compObj = globals.compMap[key];
+        if ( ((!userAlias) || (compObj[userAlias] > 0))
+          && (compObj.numUsers >= minUsers) )
+        {
+          finalKeys.push(key);
+        }
+      }
+    } else {
+      finalKeys = tempKeys;
+    }
+
+    const randKey = finalKeys [ Math.floor(Math.random() * finalKeys.length) ];
     return globals.compMap[randKey];
   },
 
@@ -210,7 +226,7 @@ module.exports = {
 
     const json = await module.exports.queryAnimeDetails(animeID);
     if ( json === undefined ) {
-      // msgContents += `**<E>** Unable to query MAL for info on "${compObj.name}"\n`
+      newMsg.content = `**<E>** Unable to query MAL for info on "${compObj.name}"`;
     } else {
       const link = `https://myanimelist.net/anime/${animeID}`;
       const year = json.start_date.slice(0, 4);
@@ -223,7 +239,7 @@ module.exports = {
         thumbnail: {url: json.main_picture.medium},
         // image: {url: json.main_picture.medium},
         fields: [],
-        footer: { text: `${mediaObj.tags}` }
+        //footer: { text: `Tags: ${mediaObj.tags}` }
       };
 
       let syn = json.synopsis;
@@ -237,6 +253,12 @@ module.exports = {
       // newMsg.embed['footer'] = { text: syn };
       // newMsg.content = syn;
 
+      newMsg.embed.fields.push({
+        name: "Tags",
+        value: mediaObj.tags,
+        inline: false
+      });
+
       for (const alias in globals.userMap) {
         if ( compObj[alias] !== 0 ) {
           newMsg.embed.fields.push({
@@ -246,104 +268,11 @@ module.exports = {
           });
         }
       }
+
       // if ( compObj.numUsers > 1 ) newMsg.embed.fields.push({ name: "Comp", value: compObj.compScore.toFixed(2), inline: true });
     }
 
     return newMsg;
-  },
-
-  tblFmtOne: async function(compObj) {
-    const maxLength = 2000;
-
-    let msgContents = "";
-
-    const mediaObj = globals.mediaMap[compObj.name.toLowerCase()];
-    const animeID = mediaObj.id;
-    const link = `<https://myanimelist.net/anime/${animeID}>`;
-    msgContents += link;
-
-    const json = await module.exports.queryAnimeDetails(animeID);
-    if ( json === undefined ) {
-      msgContents += `**<E>** Unable to query MAL for info on "${compObj.name}"\n`
-    }
-
-    const aliasList = [];
-    compObj.compScore = (Math.round(compObj.compScore*100)/100).toFixed(2);
-    const columnSizes = [compObj.name.length]; // Title
-    for (const alias in globals.userMap) {
-      if ( compObj[alias] !== 0 ) {
-        aliasList.push(alias);
-        compObj[alias] = compObj[alias].toFixed(2);
-        columnSizes.push( Math.max( alias.length, compObj[alias].length ) );
-      }
-    }
-    if ( aliasList.length > 1 )
-      columnSizes.push(Math.max(4, compObj.compScore.length)); // Comp
-    if ( json )
-      columnSizes.push(4); // Year
-
-    msgContents += "```";
-
-    // headers
-    msgContents += "\n|" + module.exports.getTblFmtStr( "Title", columnSizes[0], 'l' );
-    let i = 1;
-    for (const alias of aliasList) {
-      msgContents += module.exports.getTblFmtStr( alias.charAt(0).toUpperCase() + alias.slice(1), columnSizes[i], 'r' );
-      i++;
-    }
-    if ( aliasList.length > 1 )
-      msgContents += module.exports.getTblFmtStr( "Comp", columnSizes[i], 'r' );
-    if ( json )
-      msgContents += module.exports.getTblFmtStr( "Year", columnSizes[columnSizes.length-1], 'r' );
-
-    // linebreak
-    msgContents += "\n+";
-    for ( let i = 0; i < columnSizes.length; i++ ) {
-      msgContents += module.exports.getTblFmtBrk( columnSizes[i] );
-    }
-
-    // title
-    msgContents += "\n|" + module.exports.getTblFmtStr( compObj.name, columnSizes[0], 'l' );
-
-    i = 1;
-    // individual scores
-    for (const alias of aliasList) {
-      msgContents += module.exports.getTblFmtStr( compObj[alias], columnSizes[i], 'r' );
-      i++;
-    }
-
-    // composite score
-    if ( aliasList.length > 1 )
-      msgContents += module.exports.getTblFmtStr( compObj.compScore, columnSizes[i], 'r' );
-
-    // year
-    if ( json )
-      msgContents += module.exports.getTblFmtStr( json.end_date.slice(0, 4), columnSizes[columnSizes.length-1], 'r' );
-
-    // linebreak
-    msgContents += "\n+";
-    for ( let i = 0; i < columnSizes.length; i++ ) {
-      msgContents += module.exports.getTblFmtBrk( columnSizes[i] );
-    }
-
-    // tags
-    msgContents += "\nTags: " + mediaObj.tags;
-
-    if ( json ) {
-      msgContents += "\n-----\n";
-      msgContents += json.synopsis.replace(/\s*\[Written by MAL Rewrite\]/, "").replace(/\s*\(Source:.*/, "");
-    }
-
-    if ( msgContents.length > (maxLength - 3) ) {
-      msgContents = msgContents.slice(0, maxLength - 6) + "...";
-    }
-    msgContents += "```";
-
-    // console.log("resp.length =", msgContents.length);
-
-    const imgURL = json ? json.main_picture.medium : undefined;
-
-    return [msgContents, imgURL];
   },
 
   queryUserList: async function(alias, recalc=false) {
