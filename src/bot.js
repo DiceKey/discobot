@@ -1,5 +1,5 @@
-// https://discord.com/developers/applications/780524769430077440/bot
-// https://abal.moe/Eris/
+// https://discord.com/developers/docs/
+// https://abal.moe/Eris/docs
 const eris = require('eris');
 
 const globals = require('./globals');
@@ -13,7 +13,8 @@ const bot = new eris.Client(BOT_TOKEN);
 // When the bot is connected and ready, log to console.
 bot.on('ready', async () => {
   await helpers.readMALtokenFromFile();
-  await Promise.all([helpers.readUserFile(), helpers.readTagFile()]);
+  await helpers.readUserFile();
+  await helpers.readTagFile();
 
   console.log('\nReady!');
 });
@@ -26,8 +27,15 @@ bot.on('messageCreate', async (msg) => {
     // Ignore any message from a bot
     if (msg.author.bot) return;
 
+    if ( msg.content.indexOf("gm") === 0 ) {
+      return await commands.checkYourGMs(msg);
+    }
+
     // Ignore any message that doesn't start with the correct prefix.
     if (!msg.content.startsWith(globals.PREFIX)) return;
+
+    const d = new Date();
+    console.log(`[${d.getFullYear()}${("0" + (d.getMonth()+1)).slice(-2)}${("0" + d.getDate()).slice(-2)} ${("0" + d.getHours()).slice(-2)}:${("0" + d.getMinutes()).slice(-2)}] ${msg.author.username}: ${msg.content}`);
 
     // Extract the parts of the command and the command name
     const parts = msg.content.split(' ').map(s => s.trim()).filter(s => s);

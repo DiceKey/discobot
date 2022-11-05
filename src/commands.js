@@ -34,7 +34,7 @@ module.exports = {
     } else {
       alias = alias.toLowerCase();
       globals.userMap[alias] = {username: username, list: []};
-      helpers.queryUserList(alias, username);
+      helpers.queryUserList(alias, username, true);
       helpers.writeUserFile();
       msgContents = `added user { ${alias}: <https://myanimelist.net/profile/${username}> }`;
     }
@@ -97,6 +97,7 @@ module.exports = {
 
   /* GET TAGS */
   tags: (msg, args) => {
+    const NUMOFCOLS = 4;
     const tagList = [];
     let msgContents = "";
     Object.entries(globals.tagMap).forEach( tagEntry => {
@@ -108,10 +109,9 @@ module.exports = {
     if (tagList.length == 0) {
       msgContents = "**<I>** Tag list is empty";
     } else {
-      const numOfCols = 3;
       const columns = [];
       const columnSizes = [];
-      for ( let i = 0; i < numOfCols; i++ ) {
+      for ( let i = 0; i < NUMOFCOLS; i++ ) {
         columns.push([]);
         columnSizes.push(0);
       }
@@ -120,7 +120,7 @@ module.exports = {
       //tagList.sort( function(a,b){ return a.name.localeCompare(b.name) } );
       //tagList.sort( function(a,b){ return b.size - a.size } );
       for ( let i = 0; i < tagList.length; i++ ) {
-        const colNum = i%numOfCols;
+        const colNum = i%NUMOFCOLS;
         const thisTag = tagList[i]
         columns[colNum].push(thisTag);
         columnSizes[colNum] = Math.max(columnSizes[colNum], thisTag.length);
@@ -129,14 +129,17 @@ module.exports = {
 
       msgContents = "```\n";
 
+      /*
+      // linebreak
       msgContents += "+";
       for ( let i = 0; i < columnSizes.length; i++ ) {
         msgContents += helpers.getTblFmtBrk( columnSizes[i] );
       }
+      */
 
       for ( let j = 0; j < columns[0].length; j++ ) {
         msgContents += "\n|";
-        for ( let i = 0; i < numOfCols; i++ ) {
+        for ( let i = 0; i < NUMOFCOLS; i++ ) {
           if ( j >= columns[i].length ) {
             msgContents += helpers.getTblFmtStr( '', columnSizes[i], 'l' );
           } else {
@@ -158,30 +161,27 @@ module.exports = {
 
   /* GET RECS */
   rec: (msg, args) => {
-    let userAlias = undefined;
+    let showComp = false;
     let msgContents = "";
-    let tagList = [];
-    if (args.length > 0) {
-      const checkAlias = args[0].toLowerCase();
-      if ( globals.userMap[checkAlias] ) {
-        userAlias = checkAlias;
-        tagList = args.slice(1)
+
+    let userAlias = undefined;
+    const tagList = [];
+    for ( const arg of args ) {
+      if ( arg === "--c" ) {
+        showComp = true;
       } else {
-        tagList = args;
+        const temp = arg.toLowerCase();
+        if ( userAlias === undefined && tagList.length == 0 && globals.userMap[temp] ) {
+          userAlias = temp;
+        } else if ( globals.tagMap[temp] ) {
+          tagList.push(temp);
+        } else {
+          msgContents += `**<E>** User/Tag unrecognized: ${temp}\n`
+        }
       }
     }
 
-    const finalTagList = [];
-    for (let tagName of tagList) {
-      tagName = tagName.toLowerCase();
-      if ( globals.tagMap[tagName] !== undefined ) {
-        finalTagList.push(tagName);
-      } else {
-        msgContents += `**<E>** Tag unrecognized: ${tagName}\n`;
-      }
-    }
-
-    mediaList = helpers.getRecs(userAlias, finalTagList);
+    const mediaList = helpers.getRecs(userAlias, tagList);
 
     const aliasList = [];
     if ( userAlias !== undefined )
@@ -191,25 +191,29 @@ module.exports = {
         aliasList.push(alias);
     }
 
-    const columnSizes = [];
-    for (let i = 0; i < 1 + aliasList.length + 1; i++) {
+    const columnSizes = [0]; // Title
+    for (let i = 0; i < aliasList.length; i++) {
       columnSizes.push(0);
     }
-    for ( const mediaObj of mediaList ) {
-      columnSizes[0] = Math.max(columnSizes[0], mediaObj.name.length);
+    if ( showComp ) columnSizes.push(0);
+
+    for ( const compObj of mediaList ) {
+      columnSizes[0] = Math.max(columnSizes[0], compObj.name.length);
 
       let i = 1;
       for (const alias of aliasList) {
-        if ( mediaObj[alias] == 0 )
-          mediaObj[alias] = '--';
+        if ( compObj[alias] == 0 )
+          compObj[alias] = '--';
         else
-          mediaObj[alias] = mediaObj[alias].toFixed(2);
-        columnSizes[i] = Math.max(columnSizes[i], alias.length, mediaObj[alias].length);
+          compObj[alias] = compObj[alias].toFixed(2);
+        columnSizes[i] = Math.max(columnSizes[i], alias.length, compObj[alias].length);
         i++;
       }
 
-      mediaObj.compScore = (Math.round(mediaObj.compScore*100)/100).toFixed(2);
-      columnSizes[i] = Math.max(columnSizes[i], mediaObj.compScore.length);
+      if ( showComp ) {
+        compObj.compScore = (Math.round(compObj.compScore*100)/100).toFixed(2);
+        columnSizes[i] = Math.max(columnSizes[i], compObj.compScore.length);
+      }
     }
 
     msgContents += "```";
@@ -221,7 +225,8 @@ module.exports = {
       msgContents += helpers.getTblFmtStr( alias.charAt(0).toUpperCase() + alias.slice(1), columnSizes[i], 'r' );
       i++;
     }
-    msgContents += helpers.getTblFmtStr( "Comp", columnSizes[i], 'r' );
+    if ( showComp )
+      msgContents += helpers.getTblFmtStr( "Comp", columnSizes[i], 'r' );
     msgContents += " Tags";
 
     // linebreak
@@ -231,23 +236,26 @@ module.exports = {
     }
     msgContents += "------";
 
-    for ( const mediaObj of mediaList ) {
+    for ( const compObj of mediaList ) {
       // title
-      msgContents += "\n|" + helpers.getTblFmtStr( mediaObj.name, columnSizes[0], 'l' );
+      msgContents += "\n|" + helpers.getTblFmtStr( compObj.name, columnSizes[0], 'l' );
 
       let i = 1;
       // individual scores
       for (const alias of aliasList) {
-        msgContents += helpers.getTblFmtStr( mediaObj[alias], columnSizes[i], 'r' );
+        msgContents += helpers.getTblFmtStr( compObj[alias], columnSizes[i], 'r' );
         i++;
       }
+
       // composite score
-      msgContents += helpers.getTblFmtStr( mediaObj.compScore, columnSizes[i], 'r' );
+      if ( showComp )
+        msgContents += helpers.getTblFmtStr( compObj.compScore, columnSizes[i], 'r' );
 
       // tags
-      msgContents += " " + mediaObj.tags;
+      msgContents += " " + globals.mediaMap[compObj.name.toLowerCase()].tags;
     }
     msgContents += "```";
+
 
     const newMsg = {
       content: msgContents,
@@ -257,8 +265,97 @@ module.exports = {
     return msg.channel.createMessage(newMsg);
   },
 
-  /* GET INFO */
-  info: (msg, args) => {
+  /* GET RAND */
+  rand: async (msg, args) => {
+    const tagList = [];
+    let errStr = "";
+    for ( const arg of args ) {
+      const temp = arg.toLowerCase();
+      if ( globals.tagMap[temp] ) {
+        tagList.push(temp);
+      } else {
+        errStr += `**<E>** Tag unrecognized: ${temp}\n`
+      }
+    }
 
+    let newMsg;
+    if ( errStr ) {
+      newMsg = {
+        content: errStr,
+        messageReference: {messageID: msg.id}
+      };
+
+    } else {
+      const compObj = helpers.getRand(tagList);
+      newMsg = await helpers.tblFmtEmbed( msg, structuredClone(compObj) );
+    }
+    
+    return msg.channel.createMessage(newMsg);
+  },
+
+  /* GET INFO */
+  info: async (msg, args) => {
+    let errMsg = "";
+    let imgURL = undefined;
+    let newMsg;
+    if ( args.length > 0 ) {
+      const titleOrig = args.join(" ");
+      const titleLower = titleOrig.toLowerCase();
+      const titleObj = globals.mediaMap[titleLower];
+      if ( !titleObj ) {
+        errMsg = `**<E>** Title ${titleOrig} not found.`;
+      } else {
+        const compObj = globals.compMap[titleObj.title];
+        if ( !compObj ) {
+          errMsg = `**<E>** Title ${titleObj.title} not found.`;
+        } else {
+          newMsg = await helpers.tblFmtEmbed( msg, structuredClone(compObj) );
+        }
+      }
+    } else {
+      errMsg = "**<E>** No argument provided.";
+    }
+
+    if ( errMsg ) {
+      newMsg = {
+        content: errMsg,
+        messageReference: {messageID: msg.id}
+      };
+    }
+
+    return msg.channel.createMessage(newMsg);
+  },
+
+  checkYourGMs: async (msg) => {
+    const gmThresh = 5;
+    const tmThresh = msg.timestamp - 10 * 60 * 60 * 1000; // 8 hours
+    const gmArr = [msg.author.id];
+
+    let msgContents = `<@${msg.author.id}>`;
+    const msgArr = await msg.channel.getMessages({before: msg.id});
+    for ( const tempMsg of msgArr ) {
+      console.log("time", (tempMsg.timestamp > tmThresh), "isgm", (tempMsg.content.indexOf("gm") === 0), "!bot", !tempMsg.author.bot, "uniq", !gmArr.includes(tempMsg.author.id));
+      if ( tempMsg.timestamp < tmThresh )
+        return;
+
+      if ( (tempMsg.content.indexOf("gm") === 0)
+        && (!tempMsg.author.bot)
+        && (!gmArr.includes(tempMsg.author.id))
+        )
+      {
+        msgContents = `<@${tempMsg.author.id}> ` + msgContents;
+        gmArr.push(tempMsg.author.id);
+      } else {
+        continue;
+      }
+
+      if ( gmArr.length === gmThresh ) {
+        msgContents = "gm " + msgContents;
+        console.log("SUCCESS!", msgContents);
+        return msg.channel.createMessage(msgContents);
+      }
+    }
+
+    console.log("FAILURE!", msgContents);
   },
 };
